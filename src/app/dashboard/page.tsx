@@ -47,7 +47,7 @@ export default async function DashboardPage() {
             </div>
             <div>
               <span className="font-serif text-xl font-light tracking-wide text-charcoal">
-                Folio Vault
+                Achieve
               </span>
               <span className="hidden sm:inline-block ml-3 px-2 py-0.5 text-[10px] font-mono tracking-widest uppercase border border-stone-200 text-stone-muted">
                 Private Archive
@@ -84,7 +84,7 @@ export default async function DashboardPage() {
       {/* Footer */}
       <footer className="border-t border-stone-200 bg-white/50 py-6 text-center">
         <p className="font-sans text-[11px] tracking-wider text-stone-muted uppercase">
-          Folio Vault — Secure, Single-User Archival System. All rights reserved.
+          Achieve — Secure, Single-User Archival System. All rights reserved.
         </p>
       </footer>
     </div>

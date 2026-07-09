@@ -1,6 +1,6 @@
-# Folio Vault — Personal Certificate Archive
+# Achieve — Personal Certificate Archive
 
-**Folio Vault** is a minimalist, responsive web application designed to act as a private digital vault for professional certificates, academic transcripts, and credentials. Built with Next.js (App Router), Tailwind CSS, and Supabase, it focuses on high typographic elegance, responsive accessibility, and security.
+**Achieve** is a minimalist, responsive web application designed to act as a private digital vault for professional certificates, academic transcripts, and credentials. Built with Next.js (App Router), Tailwind CSS, and Supabase, it focuses on high typographic elegance, responsive accessibility, and security.
 
 ---
 

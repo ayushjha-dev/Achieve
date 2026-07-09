@@ -15,7 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Folio Vault — Personal Archive",
+  title: "Achieve — Personal Archive",
   description: "A private, secure space for credentials, transcripts, and professional certificates.",
 };
 

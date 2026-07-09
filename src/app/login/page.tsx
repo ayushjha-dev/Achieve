@@ -35,7 +35,7 @@ export default function LoginPage() {
             <ShieldCheck className="w-5 h-5 text-primary stroke-[1.25]" />
           </div>
           <h1 className="font-serif text-3xl font-light tracking-wide text-charcoal">
-            Folio Vault
+            Achieve
           </h1>
           <p className="font-sans text-xs tracking-widest uppercase text-stone-muted mt-2">
             Private Credential Archive
