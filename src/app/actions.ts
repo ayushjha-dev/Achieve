@@ -34,6 +34,7 @@ export async function signOutAction() {
 
 export async function addCertificateAction(data: {
   title: string;
+  organization?: string;
   category?: string;
   issueDate?: string;
   filePath: string;
@@ -52,6 +53,7 @@ export async function addCertificateAction(data: {
   const { error } = await supabase.from('certificates').insert({
     user_id: user.id,
     title: data.title,
+    organization: data.organization || null,
     category: data.category || null,
     issue_date: data.issueDate || null,
     file_path: data.filePath,

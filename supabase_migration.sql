@@ -3,6 +3,7 @@ create table public.certificates (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users(id) on delete cascade not null,
   title text not null,
+  organization text,
   category text,
   issue_date date,
   file_path text not null,

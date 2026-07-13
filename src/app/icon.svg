@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Background with warm sand to match theme -->
+  <rect width="512" height="512" rx="128" fill="#FAF9F5" />
+  
+  <!-- Outer border/frame -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#1E3A2F" stroke-width="16" />
+  
+  <!-- Shield shape in the center -->
+  <path d="M 256,80 L 410,125 L 410,270 C 410,370 256,432 256,432 C 256,432 102,370 102,270 L 102,125 Z" fill="#1E3A2F" />
+  
+  <!-- Shield inner border -->
+  <path d="M 256,98 L 390,137 L 390,262 C 390,347 256,402 256,402 C 256,402 122,347 122,262 L 122,137 Z" fill="none" stroke="#C85A32" stroke-width="8" />
+
+  <!-- Elegant custom A shape drawn with paths inside the shield -->
+  <path d="M 200,320 L 225,320 L 243,260 L 269,260 L 287,320 L 312,320 L 268,170 L 244,170 Z M 248,242 L 264,242 L 256,215 Z" fill="#FAF9F5" />
+  
+  <!-- A little star above the shield to add premium look -->
+  <polygon points="256,36 261,50 276,50 264,59 268,73 256,64 244,73 248,59 236,50 251,50" fill="#C85A32" />
+</svg>

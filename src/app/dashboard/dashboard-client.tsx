@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import {
   addCertificateAction,
@@ -22,12 +23,14 @@ import {
   Tag,
   Loader2,
   ExternalLink,
+  Building2,
 } from 'lucide-react';
 
 interface Certificate {
   id: string;
   user_id: string;
   title: string;
+  organization: string | null;
   category: string | null;
   issue_date: string | null;
   file_path: string;
@@ -46,6 +49,8 @@ export default function DashboardClient({
   initialCertificates,
   availableCategories,
 }: DashboardClientProps) {
+  const router = useRouter();
+
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -61,6 +66,7 @@ export default function DashboardClient({
 
   // Upload Form States
   const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadOrganization, setUploadOrganization] = useState('');
   const [uploadCategory, setUploadCategory] = useState('');
   const [uploadIssueDate, setUploadIssueDate] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -149,6 +155,7 @@ export default function DashboardClient({
       // Add database entry via Server Action
       const dbResult = await addCertificateAction({
         title: uploadTitle,
+        organization: uploadOrganization.trim() || undefined,
         category: uploadCategory.trim() || undefined,
         issueDate: uploadIssueDate || undefined,
         filePath,
@@ -163,10 +170,14 @@ export default function DashboardClient({
 
       // Reset form states
       setUploadTitle('');
+      setUploadOrganization('');
       setUploadCategory('');
       setUploadIssueDate('');
       setUploadFile(null);
       setIsUploadOpen(false);
+      
+      // Refresh router to fetch updated certificate list
+      router.refresh();
     } catch (err: any) {
       setUploadError(err?.message || 'An error occurred during upload.');
     } finally {
@@ -239,6 +250,8 @@ export default function DashboardClient({
       const res = await deleteCertificateAction(cert.id, cert.file_path);
       if (res.error) {
         alert(`Deletion failed: ${res.error}`);
+      } else {
+        router.refresh();
       }
     } catch (err: any) {
       console.error(err);
@@ -386,6 +399,20 @@ export default function DashboardClient({
                   placeholder="e.g. AWS Certified Solutions Architect"
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
+                  className="w-full bg-sand/50 border border-stone-200 px-4 py-2.5 text-sm text-charcoal focus:outline-none focus:border-primary transition-all font-sans rounded-none"
+                />
+              </div>
+
+              {/* Organization */}
+              <div>
+                <label className="block font-sans text-xs font-medium tracking-wider uppercase text-stone-600 mb-2">
+                  Organization / Issuer
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Amazon Web Services, Stanford University"
+                  value={uploadOrganization}
+                  onChange={(e) => setUploadOrganization(e.target.value)}
                   className="w-full bg-sand/50 border border-stone-200 px-4 py-2.5 text-sm text-charcoal focus:outline-none focus:border-primary transition-all font-sans rounded-none"
                 />
               </div>
@@ -564,21 +591,39 @@ export default function DashboardClient({
             </div>
 
             {/* Viewer Pane */}
-            <div className="flex-1 bg-stone-800 flex items-center justify-center p-4 overflow-auto">
+            <div className="flex-1 bg-stone-800 flex flex-col p-4 overflow-hidden">
               {previewFile.type.startsWith('image/') ? (
                 // Image viewer
-                <img
-                  src={previewFile.url}
-                  alt={previewFile.title}
-                  className="max-w-full max-h-full object-contain border border-stone-950 shadow-lg"
-                />
+                <div className="flex-1 flex items-center justify-center overflow-auto">
+                  <img
+                    src={previewFile.url}
+                    alt={previewFile.title}
+                    className="max-w-full max-h-full object-contain border border-stone-950 shadow-lg"
+                  />
+                </div>
               ) : (
-                // PDF Viewer using standard Browser PDF support in an iframe
-                <iframe
-                  src={`${previewFile.url}#toolbar=0`}
-                  title={previewFile.title}
-                  className="w-full h-full border border-stone-950 bg-white"
-                />
+                // PDF Viewer using standard Browser PDF support in an iframe with fallback helpers
+                <div className="flex-1 flex flex-col h-full w-full">
+                  <iframe
+                    src={`${previewFile.url}#toolbar=0`}
+                    title={previewFile.title}
+                    className="w-full flex-1 border border-stone-950 bg-white"
+                  />
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-stone-950/60 border border-stone-800/80 px-4 py-3 text-stone-300">
+                    <span className="text-[11px] font-sans">
+                      PDF preview blank or not loading in your browser?
+                    </span>
+                    <a
+                      href={previewFile.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-amber-500 hover:text-amber-400 text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-1 self-start"
+                    >
+                      <span>Open Document Directly</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -715,6 +760,12 @@ function CertificateCard({
           <h4 className="font-serif text-lg font-medium text-charcoal tracking-wide leading-snug truncate group-hover:text-primary transition-colors">
             {cert.title}
           </h4>
+          {cert.organization && (
+            <div className="flex items-center gap-1.5 text-stone-700 text-xs font-medium mt-1 truncate">
+              <Building2 className="w-3.5 h-3.5 text-stone-400 stroke-[1.25]" />
+              <span>{cert.organization}</span>
+            </div>
+          )}
           {formattedDate && (
             <div className="flex items-center gap-1.5 text-stone-muted text-xs font-sans mt-2">
               <Calendar className="w-3.5 h-3.5 stroke-[1.25]" />
