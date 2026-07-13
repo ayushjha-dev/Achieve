@@ -54,9 +54,14 @@ export async function uploadCertificateFileAction(formData: FormData) {
     .toLowerCase();
   const filePath = `${user.id}/${Date.now()}_${sanitizedFilename}.${fileExt}`;
 
+  // Convert File to Buffer to ensure robust server-side processing
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
   const { error: uploadError } = await supabase.storage
     .from('certificates')
-    .upload(filePath, file, {
+    .upload(filePath, buffer, {
+      contentType: file.type,
       cacheControl: '3600',
       upsert: false,
     });
