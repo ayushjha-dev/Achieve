@@ -48,12 +48,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect root path appropriately
-  if (path === '/') {
-    const url = request.nextUrl.clone();
-    url.pathname = user ? '/dashboard' : '/login';
-    return NextResponse.redirect(url);
-  }
-
   return supabaseResponse;
 }

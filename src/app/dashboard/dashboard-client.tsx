@@ -9,6 +9,7 @@ import {
   getDownloadUrlAction,
   getViewUrlAction,
   updateCertificateAction,
+  uploadCertificateFileAction,
 } from '../actions';
 import { User } from '@supabase/supabase-js';
 import {
@@ -143,26 +144,17 @@ export default function DashboardClient({
     setUploading(true);
 
     try {
-      const supabase = createClient();
-      
-      // Construct a clean unique file path: user_id/timestamp_filename
-      const fileExt = uploadFile.name.split('.').pop();
-      const sanitizedFilename = uploadFile.name
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .toLowerCase();
-      const filePath = `${user.id}/${Date.now()}_${sanitizedFilename}.${fileExt}`;
+      const formData = new FormData();
+      formData.append('file', uploadFile);
 
-      // Upload file directly to Supabase Storage
-      const { error: uploadStorageError } = await supabase.storage
-        .from('certificates')
-        .upload(filePath, uploadFile, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      // Upload file via server action
+      const uploadResult = await uploadCertificateFileAction(formData);
 
-      if (uploadStorageError) {
-        throw new Error(`Storage upload failed: ${uploadStorageError.message}`);
+      if (uploadResult.error || !uploadResult.filePath || !uploadResult.fileType) {
+        throw new Error(`Storage upload failed: ${uploadResult.error || 'Missing upload information'}`);
       }
+
+      const { filePath, fileType } = uploadResult;
 
       // Add database entry via Server Action
       const dbResult = await addCertificateAction({
@@ -171,11 +163,12 @@ export default function DashboardClient({
         category: uploadCategory.trim() || undefined,
         issueDate: uploadIssueDate || undefined,
         filePath,
-        fileType: uploadFile.type,
+        fileType,
       });
 
       if (dbResult.error) {
         // Attempt clean up of file if DB entry fails
+        const supabase = createClient();
         await supabase.storage.from('certificates').remove([filePath]);
         throw new Error(dbResult.error);
       }

@@ -32,6 +32,42 @@ export async function signOutAction() {
   redirect('/login');
 }
 
+export async function uploadCertificateFileAction(formData: FormData) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthenticated.' };
+  }
+
+  const file = formData.get('file') as File;
+  if (!file) {
+    return { error: 'No file provided.' };
+  }
+
+  const fileExt = file.name.split('.').pop();
+  const sanitizedFilename = file.name
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .toLowerCase();
+  const filePath = `${user.id}/${Date.now()}_${sanitizedFilename}.${fileExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('certificates')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { error: uploadError.message };
+  }
+
+  return { filePath, fileType: file.type };
+}
+
 export async function addCertificateAction(data: {
   title: string;
   organization?: string;
