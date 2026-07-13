@@ -151,3 +151,41 @@ export async function getViewUrlAction(filePath: string) {
 
   return { signedUrl: data.signedUrl };
 }
+
+export async function updateCertificateAction(
+  id: string,
+  data: {
+    title: string;
+    organization?: string;
+    category?: string;
+    issueDate?: string;
+  }
+) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthenticated.' };
+  }
+
+  const { error } = await supabase
+    .from('certificates')
+    .update({
+      title: data.title,
+      organization: data.organization || null,
+      category: data.category || null,
+      issue_date: data.issueDate || null,
+    })
+    .eq('id', id)
+    .eq('user_id', user.id);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
