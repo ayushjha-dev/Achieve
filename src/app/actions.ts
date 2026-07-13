@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
+import { createClient, createAdminClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -189,3 +189,58 @@ export async function updateCertificateAction(
   revalidatePath('/dashboard');
   return { success: true };
 }
+
+export async function getPublicViewUrlAction(filePath: string) {
+  const supabaseAdmin = await createAdminClient();
+
+  // Security check: verify the file_path exists in the certificates table
+  const { data, error: dbError } = await supabaseAdmin
+    .from('certificates')
+    .select('id')
+    .eq('file_path', filePath)
+    .single();
+
+  if (dbError || !data) {
+    return { error: 'Access denied: Invalid certificate file.' };
+  }
+
+  // Generate signed URL
+  const { data: urlData, error: storageError } = await supabaseAdmin.storage
+    .from('certificates')
+    .createSignedUrl(filePath, 60);
+
+  if (storageError) {
+    return { error: storageError.message };
+  }
+
+  return { signedUrl: urlData.signedUrl };
+}
+
+export async function getPublicDownloadUrlAction(filePath: string, filename: string) {
+  const supabaseAdmin = await createAdminClient();
+
+  // Security check: verify the file_path exists in the certificates table
+  const { data, error: dbError } = await supabaseAdmin
+    .from('certificates')
+    .select('id')
+    .eq('file_path', filePath)
+    .single();
+
+  if (dbError || !data) {
+    return { error: 'Access denied: Invalid certificate file.' };
+  }
+
+  // Generate signed URL
+  const { data: urlData, error: storageError } = await supabaseAdmin.storage
+    .from('certificates')
+    .createSignedUrl(filePath, 60, {
+      download: filename,
+    });
+
+  if (storageError) {
+    return { error: storageError.message };
+  }
+
+  return { signedUrl: urlData.signedUrl };
+}
+
