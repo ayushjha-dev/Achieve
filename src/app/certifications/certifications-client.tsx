@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getPublicDownloadUrlAction,
-  getPublicViewUrlAction,
 } from '../actions';
 import {
   Search,
@@ -107,26 +106,15 @@ export default function CertificationsClient({
   };
 
   // Preview logic
-  const handlePreview = async (cert: Certificate) => {
-    setPreviewLoading(true);
-    try {
-      const res = await getPublicViewUrlAction(cert.file_path);
-      if (res.error) {
-        alert(`Unable to preview: ${res.error}`);
-        return;
-      }
-      if (res.signedUrl) {
-        setPreviewFile({
-          url: res.signedUrl,
-          title: cert.title,
-          type: cert.file_type,
-        });
-      }
-    } catch (err) {
-      console.error(err);
-      alert('An error occurred opening the preview.');
-    } finally {
-      setPreviewLoading(false);
+  const handlePreview = (cert: Certificate) => {
+    if (cert.signedUrl) {
+      setPreviewFile({
+        url: cert.signedUrl,
+        title: cert.title,
+        type: cert.file_type,
+      });
+    } else {
+      alert('Preview URL not found.');
     }
   };
 

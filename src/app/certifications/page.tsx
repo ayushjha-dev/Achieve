@@ -22,36 +22,16 @@ export default async function CertificationsPage() {
     console.error('Error fetching public certificates:', error.message);
   }
 
-  // Pre-sign URLs for all certificates in bulk
-  let certificatesWithUrls = certificates || [];
-  if (certificates && certificates.length > 0) {
-    const pathsToSign = certificates.flatMap((c) => [
-      c.file_path,
-      getThumbnailPath(c.file_path),
-    ]);
-
-    // Sign for 3600 seconds (1 hour)
-    const { data: signedData, error: signError } = await supabase.storage
-      .from('certificates')
-      .createSignedUrls(pathsToSign, 3600);
-
-    if (signError) {
-      console.error('Error bulk signing public certificate URLs:', signError.message);
-    } else if (signedData) {
-      const urlMap = new Map<string, string>();
-      signedData.forEach((item) => {
-        if (item.path && item.signedUrl) {
-          urlMap.set(item.path, item.signedUrl);
-        }
-      });
-
-      certificatesWithUrls = certificates.map((c) => ({
-        ...c,
-        signedUrl: urlMap.get(c.file_path) || undefined,
-        thumbnailUrl: urlMap.get(getThumbnailPath(c.file_path)) || undefined,
-      }));
-    }
-  }
+  // Generate public URLs for all certificates (synchronous & fast)
+  const certificatesWithUrls = (certificates || []).map((c) => {
+    const fileUrl = supabase.storage.from('certificates').getPublicUrl(c.file_path).data.publicUrl;
+    const thumbnailUrl = supabase.storage.from('certificates').getPublicUrl(getThumbnailPath(c.file_path)).data.publicUrl;
+    return {
+      ...c,
+      signedUrl: fileUrl,
+      thumbnailUrl: thumbnailUrl,
+    };
+  });
 
   // Extract unique categories (filtering out nulls/empty strings)
   const allCategories = certificatesWithUrls
