@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import DashboardClient from './dashboard-client';
 import { LogOut, ShieldCheck } from 'lucide-react';
 import { signOutAction } from '../actions';
+import { getThumbnailPath } from '@/utils/thumbnail';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -25,11 +26,42 @@ export default async function DashboardPage() {
     console.error('Error fetching certificates:', error.message);
   }
 
+  // Pre-sign URLs for all certificates in bulk
+  let certificatesWithUrls = certificates || [];
+  if (certificates && certificates.length > 0) {
+    const pathsToSign = certificates.flatMap((c) => [
+      c.file_path,
+      getThumbnailPath(c.file_path),
+    ]);
+
+    // Sign for 3600 seconds (1 hour)
+    const { data: signedData, error: signError } = await supabase.storage
+      .from('certificates')
+      .createSignedUrls(pathsToSign, 3600);
+
+    if (signError) {
+      console.error('Error bulk signing private certificate URLs:', signError.message);
+    } else if (signedData) {
+      const urlMap = new Map<string, string>();
+      signedData.forEach((item) => {
+        if (item.path && item.signedUrl) {
+          urlMap.set(item.path, item.signedUrl);
+        }
+      });
+
+      certificatesWithUrls = certificates.map((c) => ({
+        ...c,
+        signedUrl: urlMap.get(c.file_path) || undefined,
+        thumbnailUrl: urlMap.get(getThumbnailPath(c.file_path)) || undefined,
+      }));
+    }
+  }
+
   // Extract unique categories (filtering out nulls/empty strings)
-  const allCategories = certificates
+  const allCategories = certificatesWithUrls
     ? Array.from(
         new Set(
-          certificates
+          certificatesWithUrls
             .map((c) => c.category?.trim())
             .filter((c): c is string => !!c)
         )
@@ -76,7 +108,7 @@ export default async function DashboardPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col">
         <DashboardClient
           user={user}
-          initialCertificates={certificates || []}
+          initialCertificates={certificatesWithUrls}
           availableCategories={allCategories}
         />
       </main>

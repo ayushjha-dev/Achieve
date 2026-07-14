@@ -2,6 +2,7 @@ import { createAdminClient } from '@/utils/supabase/server';
 import CertificationsClient from './certifications-client';
 import { ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { getThumbnailPath } from '@/utils/thumbnail';
 
 export const metadata = {
   title: 'Certifications | Achieve',
@@ -21,11 +22,42 @@ export default async function CertificationsPage() {
     console.error('Error fetching public certificates:', error.message);
   }
 
+  // Pre-sign URLs for all certificates in bulk
+  let certificatesWithUrls = certificates || [];
+  if (certificates && certificates.length > 0) {
+    const pathsToSign = certificates.flatMap((c) => [
+      c.file_path,
+      getThumbnailPath(c.file_path),
+    ]);
+
+    // Sign for 3600 seconds (1 hour)
+    const { data: signedData, error: signError } = await supabase.storage
+      .from('certificates')
+      .createSignedUrls(pathsToSign, 3600);
+
+    if (signError) {
+      console.error('Error bulk signing public certificate URLs:', signError.message);
+    } else if (signedData) {
+      const urlMap = new Map<string, string>();
+      signedData.forEach((item) => {
+        if (item.path && item.signedUrl) {
+          urlMap.set(item.path, item.signedUrl);
+        }
+      });
+
+      certificatesWithUrls = certificates.map((c) => ({
+        ...c,
+        signedUrl: urlMap.get(c.file_path) || undefined,
+        thumbnailUrl: urlMap.get(getThumbnailPath(c.file_path)) || undefined,
+      }));
+    }
+  }
+
   // Extract unique categories (filtering out nulls/empty strings)
-  const allCategories = certificates
+  const allCategories = certificatesWithUrls
     ? Array.from(
         new Set(
-          certificates
+          certificatesWithUrls
             .map((c) => c.category?.trim())
             .filter((c): c is string => !!c)
         )
@@ -74,7 +106,7 @@ export default async function CertificationsPage() {
         </div>
 
         <CertificationsClient
-          initialCertificates={certificates || []}
+          initialCertificates={certificatesWithUrls}
           availableCategories={allCategories}
         />
       </main>

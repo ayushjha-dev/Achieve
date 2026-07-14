@@ -28,6 +28,8 @@ interface Certificate {
   file_path: string;
   file_type: string;
   created_at: string;
+  signedUrl?: string;
+  thumbnailUrl?: string;
 }
 
 interface CertificationsClientProps {
@@ -308,29 +310,20 @@ function PublicCertificateCard({
   onPreview,
   onDownload,
 }: PublicCertificateCardProps) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [loadingImage, setLoadingImage] = useState(false);
+  // Start with the thumbnail URL, fallback to the original signed URL
+  const [imgSrc, setImgSrc] = useState<string | null>(cert.thumbnailUrl || cert.signedUrl || null);
+  const [isThumbnail, setIsThumbnail] = useState(!!cert.thumbnailUrl);
+  const [loadError, setLoadError] = useState(false);
 
-  // Lazy-load public image/PDF thumbnails on the client side
-  useEffect(() => {
-    let active = true;
-    if (cert.file_type.startsWith('image/') || cert.file_type === 'application/pdf') {
-      setLoadingImage(true);
-      getPublicViewUrlAction(cert.file_path)
-        .then((res) => {
-          if (active && res.signedUrl) {
-            setImageUrl(res.signedUrl);
-          }
-        })
-        .catch(console.error)
-        .finally(() => {
-          if (active) setLoadingImage(false);
-        });
+  const handleImageError = () => {
+    if (isThumbnail && cert.signedUrl) {
+      // Failed to load thumbnail, fallback to original
+      setIsThumbnail(false);
+      setImgSrc(cert.signedUrl);
+    } else {
+      setLoadError(true);
     }
-    return () => {
-      active = false;
-    };
-  }, [cert.file_path, cert.file_type]);
+  };
 
   const isImage = cert.file_type.startsWith('image/');
   const formattedDate = cert.issue_date
@@ -350,24 +343,32 @@ function PublicCertificateCard({
         className="aspect-[4/3] bg-sand border-b border-stone-100 flex items-center justify-center overflow-hidden relative cursor-pointer"
       >
         {isImage ? (
-          loadingImage ? (
-            <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
-          ) : imageUrl ? (
+          // Image file rendering
+          imgSrc && !loadError ? (
             <img
-              src={imageUrl}
+              src={imgSrc}
               alt={cert.title}
+              onError={handleImageError}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
             />
           ) : (
             <span className="text-stone-400 text-xs font-sans">Error loading thumbnail</span>
           )
         ) : (
-          loadingImage ? (
-            <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
-          ) : imageUrl ? (
+          // PDF file rendering
+          isThumbnail && imgSrc && !loadError ? (
+            // Render PDF thumbnail image
+            <img
+              src={imgSrc}
+              alt={cert.title}
+              onError={handleImageError}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            />
+          ) : imgSrc && !loadError ? (
+            // Fallback: Render PDF original inside iframe (e.g. for legacy uploads)
             <div className="w-full h-full relative overflow-hidden pointer-events-none">
               <iframe
-                src={`${imageUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                src={`${imgSrc}#toolbar=0&navpanes=0&scrollbar=0`}
                 className="w-full h-full border-none pointer-events-none select-none"
                 scrolling="no"
                 title={`Preview of ${cert.title}`}

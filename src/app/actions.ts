@@ -3,6 +3,7 @@
 import { createClient, createAdminClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getThumbnailPath } from '@/utils/thumbnail';
 
 export async function signInAction(formData: FormData) {
   const email = formData.get('email') as string;
@@ -70,6 +71,28 @@ export async function uploadCertificateFileAction(formData: FormData) {
     return { error: uploadError.message };
   }
 
+  // Upload thumbnail if provided
+  const thumbnail = formData.get('thumbnail') as File | null;
+  if (thumbnail) {
+    const thumbPath = getThumbnailPath(filePath);
+    const thumbArrayBuffer = await thumbnail.arrayBuffer();
+    const thumbBuffer = Buffer.from(thumbArrayBuffer);
+
+    const { error: thumbUploadError } = await supabase.storage
+      .from('certificates')
+      .upload(thumbPath, thumbBuffer, {
+        contentType: thumbnail.type,
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (thumbUploadError) {
+      // Cleanup original file if thumbnail upload fails
+      await supabase.storage.from('certificates').remove([filePath]);
+      return { error: `Thumbnail upload failed: ${thumbUploadError.message}` };
+    }
+  }
+
   return { filePath, fileType: file.type };
 }
 
@@ -131,10 +154,11 @@ export async function deleteCertificateAction(id: string, filePath: string) {
     return { error: dbError.message };
   }
 
-  // 2. Delete from Storage bucket
+  // 2. Delete from Storage bucket (both original and thumbnail)
+  const thumbPath = getThumbnailPath(filePath);
   const { error: storageError } = await supabase.storage
     .from('certificates')
-    .remove([filePath]);
+    .remove([filePath, thumbPath]);
 
   if (storageError) {
     console.error('Storage deletion error:', storageError.message);

@@ -39,6 +39,100 @@ interface Certificate {
   file_path: string;
   file_type: string;
   created_at: string;
+  signedUrl?: string;
+  thumbnailUrl?: string;
+}
+
+// Helper: Dynamically load PDF.js from CDN and render first page to jpeg blob
+async function generatePdfThumbnail(file: File): Promise<Blob> {
+  const CDN_JS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+  const CDN_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+  if (!(window as any).pdfjsLib) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = CDN_JS;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load PDF.js from CDN'));
+      document.head.appendChild(script);
+    });
+  }
+
+  const pdfjsLib = (window as any).pdfjsLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = CDN_WORKER;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+
+  const viewport = page.getViewport({ scale: 1.0 });
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  if (!context) {
+    throw new Error('Canvas 2D context not available');
+  }
+
+  // Generate a thumbnail with width 400px, height scaled proportionally
+  const desiredWidth = 400;
+  const scale = desiredWidth / viewport.width;
+  const scaledViewport = page.getViewport({ scale });
+
+  canvas.width = scaledViewport.width;
+  canvas.height = scaledViewport.height;
+
+  await page.render({
+    canvasContext: context,
+    viewport: scaledViewport,
+  }).promise;
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Canvas conversion to blob failed'));
+    }, 'image/jpeg', 0.85);
+  });
+}
+
+// Helper: Resize uploaded image to a max width of 400px
+async function generateImageThumbnail(file: File): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Canvas 2D context not available'));
+          return;
+        }
+
+        const maxDimension = 400;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension) {
+          const scale = maxDimension / width;
+          width = maxDimension;
+          height = height * scale;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas conversion to blob failed'));
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = () => reject(new Error('Failed to load image element'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('FileReader error'));
+    reader.readAsDataURL(file);
+  });
 }
 
 interface DashboardClientProps {
@@ -146,6 +240,22 @@ export default function DashboardClient({
     try {
       const formData = new FormData();
       formData.append('file', uploadFile);
+
+      // Generate thumbnail on the fly
+      try {
+        let thumbBlob: Blob | null = null;
+        if (uploadFile.type === 'application/pdf') {
+          thumbBlob = await generatePdfThumbnail(uploadFile);
+        } else if (uploadFile.type.startsWith('image/')) {
+          thumbBlob = await generateImageThumbnail(uploadFile);
+        }
+
+        if (thumbBlob) {
+          formData.append('thumbnail', new File([thumbBlob], 'thumbnail.jpg', { type: 'image/jpeg' }));
+        }
+      } catch (thumbErr) {
+        console.warn('Failed to generate preview thumbnail, proceeding with main file upload only:', thumbErr);
+      }
 
       // Upload file via server action
       const uploadResult = await uploadCertificateFileAction(formData);
@@ -819,29 +929,20 @@ function CertificateCard({
   onDelete,
   onEdit,
 }: CertificateCardProps) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [loadingImage, setLoadingImage] = useState(false);
+  // Start with the thumbnail URL, fallback to the original signed URL
+  const [imgSrc, setImgSrc] = useState<string | null>(cert.thumbnailUrl || cert.signedUrl || null);
+  const [isThumbnail, setIsThumbnail] = useState(!!cert.thumbnailUrl);
+  const [loadError, setLoadError] = useState(false);
 
-  // Lazy-load private image/PDF thumbnails on the client side
-  useEffect(() => {
-    let active = true;
-    if (cert.file_type.startsWith('image/') || cert.file_type === 'application/pdf') {
-      setLoadingImage(true);
-      getViewUrlAction(cert.file_path)
-        .then((res) => {
-          if (active && res.signedUrl) {
-            setImageUrl(res.signedUrl);
-          }
-        })
-        .catch(console.error)
-        .finally(() => {
-          if (active) setLoadingImage(false);
-        });
+  const handleImageError = () => {
+    if (isThumbnail && cert.signedUrl) {
+      // Failed to load thumbnail, fallback to original
+      setIsThumbnail(false);
+      setImgSrc(cert.signedUrl);
+    } else {
+      setLoadError(true);
     }
-    return () => {
-      active = false;
-    };
-  }, [cert.file_path, cert.file_type]);
+  };
 
   const isImage = cert.file_type.startsWith('image/');
   const formattedDate = cert.issue_date
@@ -862,25 +963,32 @@ function CertificateCard({
         className="aspect-[4/3] bg-sand border-b border-stone-100 flex items-center justify-center overflow-hidden relative cursor-pointer"
       >
         {isImage ? (
-          loadingImage ? (
-            <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
-          ) : imageUrl ? (
+          // Image file rendering
+          imgSrc && !loadError ? (
             <img
-              src={imageUrl}
+              src={imgSrc}
               alt={cert.title}
+              onError={handleImageError}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
             />
           ) : (
             <span className="text-stone-400 text-xs font-sans">Error loading thumbnail</span>
           )
         ) : (
-          // PDF Thumbnail rendering using signed URL, falling back to static visual
-          loadingImage ? (
-            <Loader2 className="w-5 h-5 animate-spin text-stone-400" />
-          ) : imageUrl ? (
+          // PDF file rendering
+          isThumbnail && imgSrc && !loadError ? (
+            // Render PDF thumbnail image
+            <img
+              src={imgSrc}
+              alt={cert.title}
+              onError={handleImageError}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            />
+          ) : imgSrc && !loadError ? (
+            // Fallback: Render PDF original inside iframe (e.g. for legacy uploads)
             <div className="w-full h-full relative overflow-hidden pointer-events-none">
               <iframe
-                src={`${imageUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                src={`${imgSrc}#toolbar=0&navpanes=0&scrollbar=0`}
                 className="w-full h-full border-none pointer-events-none select-none"
                 scrolling="no"
                 title={`Preview of ${cert.title}`}
