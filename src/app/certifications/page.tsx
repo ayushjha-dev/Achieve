@@ -22,14 +22,35 @@ export default async function CertificationsPage() {
     console.error('Error fetching public certificates:', error.message);
   }
 
+  // Group certificates by user_id to query storage contents in bulk
+  const uniqueUserIds = Array.from(new Set((certificates || []).map(c => c.user_id)));
+  
+  // Fetch file list for each unique user folder to check if thumbnails actually exist in storage
+  const storageFilesMap = new Map<string, Set<string>>();
+  for (const uid of uniqueUserIds) {
+    const { data: files } = await supabase.storage.from('certificates').list(uid, { limit: 1000 });
+    if (files) {
+      storageFilesMap.set(uid, new Set(files.map(f => f.name)));
+    }
+  }
+
   // Generate public URLs for all certificates (synchronous & fast)
   const certificatesWithUrls = (certificates || []).map((c) => {
     const fileUrl = supabase.storage.from('certificates').getPublicUrl(c.file_path).data.publicUrl;
-    const thumbnailUrl = supabase.storage.from('certificates').getPublicUrl(getThumbnailPath(c.file_path)).data.publicUrl;
+    
+    // Check if the thumbnail file actually exists in storage
+    const thumbFilename = getThumbnailPath(c.file_path).split('/').pop() || '';
+    const userFilesSet = storageFilesMap.get(c.user_id);
+    const hasThumbnail = userFilesSet ? userFilesSet.has(thumbFilename) : false;
+
+    const thumbnailUrl = hasThumbnail
+      ? supabase.storage.from('certificates').getPublicUrl(getThumbnailPath(c.file_path)).data.publicUrl
+      : undefined;
+
     return {
       ...c,
       signedUrl: fileUrl,
-      thumbnailUrl: thumbnailUrl,
+      thumbnailUrl,
     };
   });
 

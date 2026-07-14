@@ -963,29 +963,15 @@ function CertificateCard({
             <span className="text-stone-400 text-xs font-sans">Error loading thumbnail</span>
           )
         ) : (
-          // PDF file rendering
+          // PDF file rendering: show thumbnail image if it loaded successfully, otherwise show static vector fallback card
           isThumbnail && imgSrc && !loadError ? (
-            // Render PDF thumbnail image
             <img
               src={imgSrc}
               alt={cert.title}
               onError={handleImageError}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
             />
-          ) : imgSrc && !loadError ? (
-            // Fallback: Render PDF original inside iframe (e.g. for legacy uploads)
-            <div className="w-full h-full relative overflow-hidden pointer-events-none">
-              <iframe
-                src={`${imgSrc}#toolbar=0&navpanes=0&scrollbar=0`}
-                className="w-full h-full border-none pointer-events-none select-none"
-                scrolling="no"
-                title={`Preview of ${cert.title}`}
-              />
-              {/* Overlay transparent shield to prevent any interaction or cursor changes in iframe */}
-              <div className="absolute inset-0 z-10 bg-transparent" />
-            </div>
           ) : (
-            // Elegant vector visual for PDF
             <div className="w-full h-full p-6 flex flex-col justify-between border-2 border-stone-200 border-double m-3 bg-white">
               <div className="flex justify-between items-start">
                 <span className="font-mono text-[9px] uppercase tracking-widest text-stone-400">
