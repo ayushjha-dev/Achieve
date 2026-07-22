@@ -71,9 +71,9 @@ export async function uploadCertificateFileAction(formData: FormData) {
     return { error: uploadError.message };
   }
 
-  // Upload thumbnail if provided
-  const thumbnail = formData.get('thumbnail') as File | null;
-  if (thumbnail) {
+  // Upload thumbnail if provided (validate it's a real file with content)
+  const thumbnail = formData.get('thumbnail');
+  if (thumbnail instanceof File && thumbnail.size > 0) {
     const thumbPath = getThumbnailPath(filePath);
     const thumbArrayBuffer = await thumbnail.arrayBuffer();
     const thumbBuffer = Buffer.from(thumbArrayBuffer);
@@ -81,16 +81,17 @@ export async function uploadCertificateFileAction(formData: FormData) {
     const { error: thumbUploadError } = await supabase.storage
       .from('certificates')
       .upload(thumbPath, thumbBuffer, {
-        contentType: thumbnail.type,
+        contentType: thumbnail.type || 'image/jpeg',
         cacheControl: '3600',
         upsert: false,
       });
 
     if (thumbUploadError) {
-      // Cleanup original file if thumbnail upload fails
-      await supabase.storage.from('certificates').remove([filePath]);
-      return { error: `Thumbnail upload failed: ${thumbUploadError.message}` };
+      // Log the error but don't block the main upload — thumbnail is optional
+      console.error('Thumbnail upload failed (non-fatal):', thumbUploadError.message);
     }
+  } else {
+    console.warn('No thumbnail provided or thumbnail was empty — skipping thumbnail upload.');
   }
 
   return { filePath, fileType: file.type };

@@ -10,6 +10,7 @@ import {
   updateCertificateAction,
   uploadCertificateFileAction,
 } from '../actions';
+import { getThumbnailPath } from '@/utils/thumbnail';
 import { User } from '@supabase/supabase-js';
 import {
   Plus,
@@ -240,23 +241,19 @@ export default function DashboardClient({
       const formData = new FormData();
       formData.append('file', uploadFile);
 
-      // Generate thumbnail on the fly
+      // Generate thumbnail on the fly (kept in memory, uploaded separately)
+      let thumbBlob: Blob | null = null;
       try {
-        let thumbBlob: Blob | null = null;
         if (uploadFile.type === 'application/pdf') {
           thumbBlob = await generatePdfThumbnail(uploadFile);
         } else if (uploadFile.type.startsWith('image/')) {
           thumbBlob = await generateImageThumbnail(uploadFile);
         }
-
-        if (thumbBlob) {
-          formData.append('thumbnail', new File([thumbBlob], 'thumbnail.jpg', { type: 'image/jpeg' }));
-        }
       } catch (thumbErr) {
         console.warn('Failed to generate preview thumbnail, proceeding with main file upload only:', thumbErr);
       }
 
-      // Upload file via server action
+      // Upload main file via server action (thumbnail is NOT included to stay within body size limit)
       const uploadResult = await uploadCertificateFileAction(formData);
 
       if (uploadResult.error || !uploadResult.filePath || !uploadResult.fileType) {
@@ -264,6 +261,26 @@ export default function DashboardClient({
       }
 
       const { filePath, fileType } = uploadResult;
+
+      // Upload thumbnail directly from client to Supabase Storage (avoids server action body size limit)
+      if (thumbBlob && thumbBlob.size > 0) {
+        try {
+          const supabase = createClient();
+          const thumbPath = getThumbnailPath(filePath);
+          const { error: thumbError } = await supabase.storage
+            .from('certificates')
+            .upload(thumbPath, thumbBlob, {
+              contentType: 'image/jpeg',
+              cacheControl: '3600',
+              upsert: false,
+            });
+          if (thumbError) {
+            console.error('Thumbnail upload failed (non-fatal):', thumbError.message);
+          }
+        } catch (thumbUploadErr) {
+          console.warn('Thumbnail upload threw an exception (non-fatal):', thumbUploadErr);
+        }
+      }
 
       // Add database entry via Server Action
       const dbResult = await addCertificateAction({
