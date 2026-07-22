@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Thumbnail Generator</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #121212; color: #00ff00; }
+    #log { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Generating Missing PDF Thumbnails...</h1>
+  <div id="log">Initializing...</div>
+
+  <script>
+    const supabaseUrl = "https://rsyrqudkrhotjozmdlbh.supabase.co";
+    const supabaseServiceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzeXJxdWRrcmhvdGpvem1kbGJoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzYxNzYxMCwiZXhwIjoyMDk5MTkzNjEwfQ.zN4b635w2jWxB_HZA9Q4ePCmMmp9I1eIjaPxbg1cbuE";
+
+    const supabase = supabasejs.createClient(supabaseUrl, supabaseServiceKey);
+    const logDiv = document.getElementById('log');
+
+    function log(msg) {
+      logDiv.textContent += "\n" + msg;
+      console.log(msg);
+    }
+
+    function getThumbnailPath(filePath) {
+      const lastDot = filePath.lastIndexOf('.');
+      if (lastDot === -1) {
+        return `${filePath}_thumb.jpg`;
+      }
+      return `${filePath.substring(0, lastDot)}_thumb.jpg`;
+    }
+
+    async function generatePdfThumbnail(arrayBuffer) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const page = await pdf.getPage(1);
+
+      const viewport = page.getViewport({ scale: 1.0 });
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      const desiredWidth = 400;
+      const scale = desiredWidth / viewport.width;
+      const scaledViewport = page.getViewport({ scale });
+
+      canvas.width = scaledViewport.width;
+      canvas.height = scaledViewport.height;
+
+      await page.render({
+        canvasContext: context,
+        viewport: scaledViewport,
+      }).promise;
+
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          resolve(blob);
+        }, 'image/jpeg', 0.85);
+      });
+    }
+
+    async function run() {
+      try {
+        log("Fetching certificates from DB...");
+        const { data: certs, error } = await supabase.from('certificates').select('*');
+        if (error) throw error;
+
+        log(`Found ${certs.length} certificates. Processing...`);
+
+        for (let i = 0; i < certs.length; i++) {
+          const cert = certs[i];
+          const thumbPath = getThumbnailPath(cert.file_path);
+          log(`[${i+1}/${certs.length}] Checking "${cert.title}"...`);
+
+          // Check if thumbnail exists by trying to download it
+          const { data: thumbData, error: thumbError } = await supabase.storage
+            .from('certificates')
+            .download(thumbPath);
+
+          if (!thumbError && thumbData) {
+            log(`  Thumbnail already exists. Skipping.`);
+            continue;
+          }
+
+          log(`  Thumbnail missing. Generating...`);
+          // Download original PDF
+          const { data: pdfData, error: pdfError } = await supabase.storage
+            .from('certificates')
+            .download(cert.file_path);
+
+          if (pdfError) {
+            log(`  Error downloading original PDF: ${pdfError.message}`);
+            continue;
+          }
+
+          const arrayBuffer = await pdfData.arrayBuffer();
+          const thumbBlob = await generatePdfThumbnail(arrayBuffer);
+
+          log(`  Uploading thumbnail to "${thumbPath}"...`);
+          const { error: uploadError } = await supabase.storage
+            .from('certificates')
+            .upload(thumbPath, thumbBlob, {
+              contentType: 'image/jpeg',
+              cacheControl: '3600',
+              upsert: true
+            });
+
+          if (uploadError) {
+            log(`  Upload failed: ${uploadError.message}`);
+          } else {
+            log(`  Successfully generated and uploaded thumbnail!`);
+          }
+        }
+
+        log("\n=== ALL PROCESSES COMPLETED SUCCESSFULLY ===");
+      } catch (err) {
+        log(`\nFATAL ERROR: ${err.message}`);
+      }
+    }
+
+    window.onload = run;
+  </script>
+</body>
+</html>
