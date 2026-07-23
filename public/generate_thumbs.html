@@ -1,104 +1,190 @@
-<!DOCTYPE html>
-<html>
+﻿<!DOCTYPE html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
   <title>Thumbnail Generator</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
   <style>
-    body { font-family: monospace; padding: 20px; background: #121212; color: #00ff00; }
-    #log { white-space: pre-wrap; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: monospace;
+      padding: 24px;
+      background: #121212;
+      color: #00ff00;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    h1 { color: #00e676; margin-bottom: 4px; }
+    p.subtitle { color: #888; margin-top: 0; margin-bottom: 24px; font-size: 0.85rem; }
+    #config-section {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    #config-section label {
+      display: block;
+      color: #aaa;
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    #config-section label:first-of-type { margin-top: 0; }
+    #config-section input {
+      width: 100%;
+      background: #0d0d0d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #00ff00;
+      font-family: monospace;
+      font-size: 0.85rem;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #config-section input:focus { border-color: #00e676; }
+    #start-btn {
+      margin-top: 16px;
+      background: #00c853;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 24px;
+      font-family: monospace;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #start-btn:hover { background: #00e676; }
+    #start-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
+    #log-section { display: none; }
+    #log {
+      white-space: pre-wrap;
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 14px;
+      min-height: 200px;
+      max-height: 500px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    .log-ok   { color: #00e676; }
+    .log-warn { color: #ffab40; }
+    .log-err  { color: #ff5252; }
+    .log-info { color: #80cbc4; }
   </style>
 </head>
 <body>
-  <h1>Generating Missing PDF Thumbnails...</h1>
-  <div id="log">Initializing...</div>
+  <h1>PDF Thumbnail Generator</h1>
+  <p class="subtitle">One-time utility — credentials are never stored or sent anywhere except Supabase.</p>
+
+  <div id="config-section">
+    <label for="input-url">Supabase Project URL</label>
+    <input id="input-url" type="text" placeholder="https://xxxxxxxxxxxx.supabase.co" spellcheck="false" />
+
+    <label for="input-key">Service Role Key (keep secret!)</label>
+    <input id="input-key" type="password" placeholder="eyJ..." spellcheck="false" autocomplete="off" />
+
+    <br />
+    <button id="start-btn" onclick="startProcess()">Start Generating Thumbnails</button>
+  </div>
+
+  <div id="log-section">
+    <div id="log">Initializing...</div>
+  </div>
 
   <script>
-    const supabaseUrl = "https://rsyrqudkrhotjozmdlbh.supabase.co";
-    const supabaseServiceKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzeXJxdWRrcmhvdGpvem1kbGJoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzYxNzYxMCwiZXhwIjoyMDk5MTkzNjEwfQ.zN4b635w2jWxB_HZA9Q4ePCmMmp9I1eIjaPxbg1cbuE";
-
-    const supabase = supabasejs.createClient(supabaseUrl, supabaseServiceKey);
     const logDiv = document.getElementById('log');
 
-    function log(msg) {
-      logDiv.textContent += "\n" + msg;
-      console.log(msg);
+    function appendLog(msg, cls) {
+      const line = document.createElement('span');
+      if (cls) line.className = cls;
+      line.textContent = msg + '\n';
+      logDiv.appendChild(line);
+      logDiv.scrollTop = logDiv.scrollHeight;
     }
 
     function getThumbnailPath(filePath) {
       const lastDot = filePath.lastIndexOf('.');
-      if (lastDot === -1) {
-        return `${filePath}_thumb.jpg`;
-      }
-      return `${filePath.substring(0, lastDot)}_thumb.jpg`;
+      return lastDot === -1
+        ? filePath + '_thumb.jpg'
+        : filePath.substring(0, lastDot) + '_thumb.jpg';
     }
 
     async function generatePdfThumbnail(arrayBuffer) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const page = await pdf.getPage(1);
-
-      const viewport = page.getViewport({ scale: 1.0 });
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+      const pdf   = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const page  = await pdf.getPage(1);
+      const vp0   = page.getViewport({ scale: 1.0 });
+      const scale = 400 / vp0.width;
+      const vp    = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-
-      const desiredWidth = 400;
-      const scale = desiredWidth / viewport.width;
-      const scaledViewport = page.getViewport({ scale });
-
-      canvas.width = scaledViewport.width;
-      canvas.height = scaledViewport.height;
-
-      await page.render({
-        canvasContext: context,
-        viewport: scaledViewport,
-      }).promise;
-
-      return new Promise((resolve) => {
-        canvas.toBlob((blob) => {
-          resolve(blob);
-        }, 'image/jpeg', 0.85);
+      canvas.width  = vp.width;
+      canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      return new Promise(function(resolve) {
+        canvas.toBlob(function(blob) { resolve(blob); }, 'image/jpeg', 0.85);
       });
     }
 
-    async function run() {
+    async function startProcess() {
+      const supabaseUrl = document.getElementById('input-url').value.trim();
+      const serviceKey  = document.getElementById('input-key').value.trim();
+
+      if (!supabaseUrl || !serviceKey) {
+        alert('Please fill in both the Supabase URL and Service Role Key.');
+        return;
+      }
+
+      document.getElementById('log-section').style.display = 'block';
+      document.getElementById('config-section').style.display = 'none';
+      logDiv.textContent = '';
+
+      const supabase = supabasejs.createClient(supabaseUrl, serviceKey);
+
       try {
-        log("Fetching certificates from DB...");
+        appendLog('Fetching certificates from DB...', 'log-info');
         const { data: certs, error } = await supabase.from('certificates').select('*');
         if (error) throw error;
 
-        log(`Found ${certs.length} certificates. Processing...`);
+        appendLog('Found ' + certs.length + ' certificates. Processing...', 'log-info');
 
         for (let i = 0; i < certs.length; i++) {
-          const cert = certs[i];
+          const cert      = certs[i];
           const thumbPath = getThumbnailPath(cert.file_path);
-          log(`[${i+1}/${certs.length}] Checking "${cert.title}"...`);
 
-          // Check if thumbnail exists by trying to download it
+          appendLog('\n[' + (i + 1) + '/' + certs.length + '] Checking "' + cert.title + '"...');
+
           const { data: thumbData, error: thumbError } = await supabase.storage
             .from('certificates')
             .download(thumbPath);
 
           if (!thumbError && thumbData) {
-            log(`  Thumbnail already exists. Skipping.`);
+            appendLog('  Thumbnail already exists. Skipping.', 'log-ok');
             continue;
           }
 
-          log(`  Thumbnail missing. Generating...`);
-          // Download original PDF
+          appendLog('  Thumbnail missing. Generating...', 'log-warn');
+
           const { data: pdfData, error: pdfError } = await supabase.storage
             .from('certificates')
             .download(cert.file_path);
 
           if (pdfError) {
-            log(`  Error downloading original PDF: ${pdfError.message}`);
+            appendLog('  Error downloading PDF: ' + pdfError.message, 'log-err');
             continue;
           }
 
           const arrayBuffer = await pdfData.arrayBuffer();
-          const thumbBlob = await generatePdfThumbnail(arrayBuffer);
+          const thumbBlob   = await generatePdfThumbnail(arrayBuffer);
 
-          log(`  Uploading thumbnail to "${thumbPath}"...`);
+          appendLog('  Uploading thumbnail to "' + thumbPath + '"...');
           const { error: uploadError } = await supabase.storage
             .from('certificates')
             .upload(thumbPath, thumbBlob, {
@@ -108,19 +194,17 @@
             });
 
           if (uploadError) {
-            log(`  Upload failed: ${uploadError.message}`);
+            appendLog('  Upload failed: ' + uploadError.message, 'log-err');
           } else {
-            log(`  Successfully generated and uploaded thumbnail!`);
+            appendLog('  Successfully generated and uploaded thumbnail!', 'log-ok');
           }
         }
 
-        log("\n=== ALL PROCESSES COMPLETED SUCCESSFULLY ===");
+        appendLog('\n=== ALL PROCESSES COMPLETED SUCCESSFULLY ===', 'log-ok');
       } catch (err) {
-        log(`\nFATAL ERROR: ${err.message}`);
+        appendLog('\nFATAL ERROR: ' + err.message, 'log-err');
       }
     }
-
-    window.onload = run;
   </script>
 </body>
 </html>
