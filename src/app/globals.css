@@ -1,24 +1,89 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @theme {
   --font-serif: var(--font-cormorant);
   --font-sans: var(--font-inter);
-  
-  --color-primary: #1E3A2F;      /* Editorial Forest Green */
+
+  --color-primary: #1E3A2F;
   --color-primary-hover: #162B22;
-  --color-accent: #C85A32;       /* Terracotta Clay */
-  --color-sand: #FAF9F5;         /* Warm Sand Background */
-  --color-charcoal: #1C1A17;     /* Soft Print Black */
-  --color-stone-muted: #78716C;  /* Muted Text */
+  --color-accent: #C85A32;
+  --color-sand: #FAF9F5;
+  --color-charcoal: #1C1A17;
+  --color-stone-muted: #78716C;
 }
 
 :root {
-  --background: #FAF9F5;
-  --foreground: #1C1A17;
+  --background: #0D1F18;
+  --foreground: #FAF9F5;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0D1F18;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E3A2F;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C85A32;
+}
+
+/* ── Selection color ── */
+::selection {
+  background: rgba(200, 90, 50, 0.25);
+  color: #FAF9F5;
+}
+
+/* ── Shimmer keyframe (for shimmer buttons) ── */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ── Gradient text animation ── */
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-gradient-text {
+  background-size: 200% 200%;
+  animation: gradientShift 4s ease infinite;
+}
+
+/* ── Float animation ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* ── Slow spin ── */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 20s linear infinite;
 }
