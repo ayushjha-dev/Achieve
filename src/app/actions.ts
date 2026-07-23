@@ -310,3 +310,52 @@ export async function getPublicDownloadUrlAction(filePath: string, filename: str
   return { signedUrl: urlData.signedUrl };
 }
 
+/**
+ * Saves a pre-rendered JPEG thumbnail blob to Supabase Storage.
+ * Security: verifies filePath exists in the certificates DB table before writing.
+ * Safe to call from unauthenticated public pages — it cannot write arbitrary paths.
+ */
+export async function saveThumbnailAction(filePath: string, thumbnailBase64: string) {
+  const supabaseAdmin = await createAdminClient();
+
+  // Security: ensure the source file is a real registered certificate
+  const { data, error: dbError } = await supabaseAdmin
+    .from('certificates')
+    .select('id')
+    .eq('file_path', filePath)
+    .single();
+
+  if (dbError || !data) {
+    return { error: 'Access denied: Invalid certificate file.' };
+  }
+
+  const thumbPath = getThumbnailPath(filePath);
+
+  // Check if it already exists — avoid double-writing if two renders race
+  const { data: existing } = await supabaseAdmin.storage
+    .from('certificates')
+    .list(thumbPath.substring(0, thumbPath.lastIndexOf('/')), { limit: 1000 });
+
+  const thumbFilename = thumbPath.split('/').pop() || '';
+  if (existing && existing.some((f) => f.name === thumbFilename)) {
+    return { success: true, skipped: true };
+  }
+
+  // Decode base64 → Buffer
+  const base64Data = thumbnailBase64.replace(/^data:image\/jpeg;base64,/, '');
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from('certificates')
+    .upload(thumbPath, buffer, {
+      contentType: 'image/jpeg',
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { error: uploadError.message };
+  }
+
+  return { success: true };
+}

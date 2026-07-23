@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getPublicDownloadUrlAction,
+  saveThumbnailAction,
 } from '../actions';
 import {
   Search,
@@ -374,6 +375,15 @@ function PublicCertificateCard({
   const { dataUrl: livePdfDataUrl, loading: livePdfLoading, error: livePdfError } = usePdfPreview(
     needsLivePdfPreview ? (cert.signedUrl ?? null) : null
   );
+
+  // Auto-save the live-rendered thumbnail via server action so future loads are instant
+  React.useEffect(() => {
+    if (!livePdfDataUrl || livePdfError || !needsLivePdfPreview) return;
+    saveThumbnailAction(cert.file_path, livePdfDataUrl).catch(() => {
+      // Non-fatal: preview still shows; will retry on next load
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePdfDataUrl]);
 
   const handleImageError = () => {
     if (isThumbnail && cert.signedUrl) {
