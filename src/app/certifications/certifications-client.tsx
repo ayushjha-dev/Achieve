@@ -17,6 +17,70 @@ import {
   Building2,
 } from 'lucide-react';
 
+// Hook: Renders a PDF's first page to a data-URL using PDF.js, for live card previews
+function usePdfPreview(pdfUrl: string | null | undefined): { dataUrl: string | null; loading: boolean; error: boolean } {
+  const [dataUrl, setDataUrl] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!pdfUrl) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    setDataUrl(null);
+
+    (async () => {
+      try {
+        const CDN_JS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+        const CDN_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        if (!(window as any).pdfjsLib) {
+          await new Promise<void>((res, rej) => {
+            const s = document.createElement('script');
+            s.src = CDN_JS;
+            s.onload = () => res();
+            s.onerror = () => rej(new Error('PDF.js load failed'));
+            document.head.appendChild(s);
+          });
+        }
+
+        const pdfjsLib = (window as any).pdfjsLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = CDN_WORKER;
+
+        const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+        if (cancelled) return;
+
+        const page = await pdf.getPage(1);
+        if (cancelled) return;
+
+        const viewport0 = page.getViewport({ scale: 1.0 });
+        const scale = 480 / viewport0.width;
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No 2D context');
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (cancelled) return;
+
+        setDataUrl(canvas.toDataURL('image/jpeg', 0.88));
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [pdfUrl]);
+
+  return { dataUrl, loading, error };
+}
+
 interface Certificate {
   id: string;
   user_id: string;
@@ -298,14 +362,21 @@ function PublicCertificateCard({
   onPreview,
   onDownload,
 }: PublicCertificateCardProps) {
-  // Start with the thumbnail URL, fallback to the original signed URL
-  const [imgSrc, setImgSrc] = useState<string | null>(cert.thumbnailUrl || cert.signedUrl || null);
+  const [imgSrc, setImgSrc] = useState<string | null>(cert.thumbnailUrl || null);
   const [isThumbnail, setIsThumbnail] = useState(!!cert.thumbnailUrl);
   const [loadError, setLoadError] = useState(false);
 
+  const isImage = cert.file_type.startsWith('image/');
+  const isPdf = cert.file_type === 'application/pdf';
+
+  // Only render live PDF preview when there is no stored thumbnail and the file is a PDF
+  const needsLivePdfPreview = isPdf && !cert.thumbnailUrl;
+  const { dataUrl: livePdfDataUrl, loading: livePdfLoading, error: livePdfError } = usePdfPreview(
+    needsLivePdfPreview ? (cert.signedUrl ?? null) : null
+  );
+
   const handleImageError = () => {
     if (isThumbnail && cert.signedUrl) {
-      // Failed to load thumbnail, fallback to original
       setIsThumbnail(false);
       setImgSrc(cert.signedUrl);
     } else {
@@ -313,7 +384,6 @@ function PublicCertificateCard({
     }
   };
 
-  const isImage = cert.file_type.startsWith('image/');
   const formattedDate = cert.issue_date
     ? new Date(cert.issue_date).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -322,6 +392,60 @@ function PublicCertificateCard({
         timeZone: 'UTC',
       })
     : null;
+
+  // Determine what to render in the thumbnail area for PDFs
+  const renderPdfThumbnail = () => {
+    if (isThumbnail && imgSrc && !loadError) {
+      return (
+        <img
+          src={imgSrc}
+          alt={cert.title}
+          onError={handleImageError}
+          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+        />
+      );
+    }
+    if (needsLivePdfPreview) {
+      if (livePdfLoading) {
+        return (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-stone-50">
+            <Loader2 className="w-5 h-5 text-stone-400 animate-spin" />
+            <span className="font-mono text-[9px] uppercase tracking-widest text-stone-400">Rendering preview…</span>
+          </div>
+        );
+      }
+      if (livePdfDataUrl && !livePdfError) {
+        return (
+          <img
+            src={livePdfDataUrl}
+            alt={cert.title}
+            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+          />
+        );
+      }
+    }
+    // Final fallback
+    return (
+      <div className="w-full h-full p-6 flex flex-col justify-between border-2 border-stone-200 border-double m-3 bg-white">
+        <div className="flex justify-between items-start">
+          <span className="font-mono text-[9px] uppercase tracking-widest text-stone-400">
+            Official Document
+          </span>
+          <FileText className="w-4 h-4 text-stone-400 stroke-[1.25]" />
+        </div>
+        <div className="text-center py-4">
+          <span className="font-serif text-5xl italic font-semibold text-stone-300">
+            PDF
+          </span>
+        </div>
+        <div className="text-right">
+          <span className="font-mono text-[8px] tracking-wider uppercase text-stone-400">
+            Secure Archive
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="bg-white border border-stone-200/80 hover:border-stone-400 group transition-all duration-300 flex flex-col shadow-[0_2px_8px_rgba(28,26,23,0.01)] relative overflow-hidden">
@@ -339,38 +463,18 @@ function PublicCertificateCard({
               onError={handleImageError}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
             />
+          ) : cert.signedUrl ? (
+            <img
+              src={cert.signedUrl}
+              alt={cert.title}
+              onError={() => setLoadError(true)}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            />
           ) : (
             <span className="text-stone-400 text-xs font-sans">Error loading thumbnail</span>
           )
         ) : (
-          // PDF file rendering: show thumbnail image if it loaded successfully, otherwise show static vector fallback card
-          isThumbnail && imgSrc && !loadError ? (
-            <img
-              src={imgSrc}
-              alt={cert.title}
-              onError={handleImageError}
-              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-            />
-          ) : (
-            <div className="w-full h-full p-6 flex flex-col justify-between border-2 border-stone-200 border-double m-3 bg-white">
-              <div className="flex justify-between items-start">
-                <span className="font-mono text-[9px] uppercase tracking-widest text-stone-400">
-                  Official Document
-                </span>
-                <FileText className="w-4 h-4 text-stone-400 stroke-[1.25]" />
-              </div>
-              <div className="text-center py-4">
-                <span className="font-serif text-5xl italic font-semibold text-stone-300">
-                  PDF
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="font-mono text-[8px] tracking-wider uppercase text-stone-400">
-                  Secure Archive
-                </span>
-              </div>
-            </div>
-          )
+          renderPdfThumbnail()
         )}
 
         {/* Absolute visual overlay category badge */}
