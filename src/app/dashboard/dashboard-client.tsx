@@ -1011,6 +1011,27 @@ function CertificateCard({
     needsLivePdfPreview ? (cert.signedUrl ?? null) : null
   );
 
+  // Auto-save the live-rendered thumbnail to Supabase Storage so future loads are instant
+  React.useEffect(() => {
+    if (!livePdfDataUrl || livePdfError || !needsLivePdfPreview) return;
+    (async () => {
+      try {
+        const res = await fetch(livePdfDataUrl);
+        const blob = await res.blob();
+        const supabase = createClient();
+        const thumbPath = getThumbnailPath(cert.file_path);
+        await supabase.storage.from('certificates').upload(thumbPath, blob, {
+          contentType: 'image/jpeg',
+          cacheControl: '3600',
+          upsert: false, // don't overwrite if it somehow appeared between renders
+        });
+      } catch {
+        // Non-fatal: preview still displays; will try again next time
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePdfDataUrl]);
+
   const handleImageError = () => {
     if (isThumbnail && cert.signedUrl) {
       setIsThumbnail(false);
